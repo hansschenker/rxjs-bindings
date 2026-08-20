@@ -6,6 +6,8 @@
   "include": [
     "./**/*.ts",
     "./**/*.tsx",
+    "../src/bind-if.ts",
+    "../src/bind-list.ts",
     "../src/bindings.ts",
     "../src/jsx.ts",
     "../src/share-latest.ts",

@@ -83,14 +83,9 @@ button {
 }
 
 .todo-read-panel {
-  display: none;
   padding: 1rem;
   border: 1px solid currentColor;
   border-radius: 0.5rem;
-}
-
-.todo-read-panel.visible {
-  display: block;
 }
 
 .section-heading {

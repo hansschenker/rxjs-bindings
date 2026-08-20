@@ -7,12 +7,13 @@ export default defineConfig({
     jsxFragment: 'Fragment',
   },
   build: {
-    outDir: 'dist-demo',
+    lib: {
+      entry: fileURLToPath(new URL('./src/index.ts', import.meta.url)),
+      formats: ['es'],
+      fileName: 'rxjs-bindings',
+    },
     rollupOptions: {
-      input: {
-        main: fileURLToPath(new URL('./index.html', import.meta.url)),
-        sample: fileURLToPath(new URL('./sample/index.html', import.meta.url)),
-      },
+      external: [/^rxjs(\/|$)/],
     },
   },
 });

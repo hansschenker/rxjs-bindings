@@ -12,6 +12,8 @@ import {
   bindClass,
   bindText,
 } from './bindings';
+import { bindRouteView } from './bind-route-view';
+import { jsx } from './jsx';
 import {
   locationToUrl,
   parseRoute,
@@ -23,6 +25,7 @@ import {
   type Route,
 } from './router';
 import { shareLatest } from './share-latest';
+import { createView, type View } from './view';
 
 const routerSection = document.querySelector<HTMLElement>('#routerSection')!;
 const routeUrlElement = document.querySelector<HTMLElement>('#routeUrl')!;
@@ -67,18 +70,44 @@ const formatRouteParams = (route: Route): string => {
   }
 };
 
-const renderRoute = (route: Route): string => {
-  switch (route.type) {
-    case 'home':
-      return 'Home view';
-    case 'user':
-      return `User view for id ${route.id}`;
-    case 'settings':
-      return 'Settings view';
-    case 'notFound':
-      return `Not found: ${route.pathname}`;
-  }
-};
+// Typed route data selects the JSX view. JSX owns structure only; the view
+// lifetime ends when the next route mounts through bindRouteView.
+const createRouteView = (route: Route): View<HTMLElement> =>
+  createView(() => {
+    switch (route.type) {
+      case 'home':
+        return (
+          <section>
+            <strong>Home view</strong>
+            <p>The typed home route selected this JSX view.</p>
+          </section>
+        ) as HTMLElement;
+
+      case 'user':
+        return (
+          <section>
+            <strong>User view</strong>
+            <p>Mounted for user id {route.id}.</p>
+          </section>
+        ) as HTMLElement;
+
+      case 'settings':
+        return (
+          <section>
+            <strong>Settings view</strong>
+            <p>The typed settings route selected this JSX view.</p>
+          </section>
+        ) as HTMLElement;
+
+      case 'notFound':
+        return (
+          <section>
+            <strong>Not found</strong>
+            <p>No route matches {route.pathname}.</p>
+          </section>
+        ) as HTMLElement;
+    }
+  });
 
 // Imperative application code can enter the router through this Subject.
 const programmaticNavigation$ = new Subject<NavigationCommand>();
@@ -172,11 +201,6 @@ const routeParams$ = route$.pipe(
   distinctUntilChanged(),
 );
 
-const routeView$ = route$.pipe(
-  map(renderRoute),
-  distinctUntilChanged(),
-);
-
 const routeNotFound$ = route$.pipe(
   map(route => route.type === 'notFound'),
   distinctUntilChanged(),
@@ -186,9 +210,11 @@ const bindings = [
   bindText(routeUrlElement, currentUrl$),
   bindText(routeTypeElement, routeType$),
   bindText(routeParamsElement, routeParams$),
-  bindText(routeViewElement, routeView$),
   bindAttribute(routerSection, 'data-route', routeType$),
   bindClass(routerSection, 'not-found', routeNotFound$),
+  // route$ already applies distinctUntilChanged(sameRoute), so one view
+  // mounts per navigation, not one per emission.
+  bindRouteView(routeViewElement, route$, createRouteView),
 ];
 
 const destroy = (): void => {

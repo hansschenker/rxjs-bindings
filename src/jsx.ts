@@ -11,7 +11,7 @@ export type JSXChild =
 export type JSXChildren = readonly JSXChild[];
 
 export type Component<P extends object = {}> = (
-  props: P & { readonly children: JSXChildren },
+  props: P & { readonly children?: JSXChildren },
 ) => Node;
 
 export type DOMProps = Readonly<Record<string, unknown>> & {
@@ -157,27 +157,33 @@ export function jsx<P extends object>(
     return type({
       ...(props ?? {}),
       children,
-    } as P & { readonly children: JSXChildren });
+    } as P & { readonly children?: JSXChildren });
   }
 
   return createElement(type, props as DOMProps | null, children);
 }
 
-export const Fragment: Component = ({ children }) => {
+export const Fragment: Component = ({ children = [] }) => {
   const fragment = document.createDocumentFragment();
   children.forEach(child => appendChild(fragment, child));
   return fragment;
 };
 
-declare global {
-  namespace JSX {
-    type Element = Node;
+/**
+ * Factory-scoped JSX namespace. TypeScript resolves JSX types through the
+ * configured jsxFactory entity ("jsx.JSX" before any global JSX), so the
+ * library does not install a global JSX namespace that could collide with
+ * other JSX runtimes in a consuming application.
+ */
+export declare namespace jsx {
+  export namespace JSX {
+    export type Element = Node;
 
-    interface ElementChildrenAttribute {
+    export interface ElementChildrenAttribute {
       children: unknown;
     }
 
-    interface IntrinsicElements {
+    export interface IntrinsicElements {
       [tagName: string]: DOMProps;
     }
   }

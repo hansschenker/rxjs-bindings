@@ -1,19 +1,34 @@
 {
   "name": "rxjs-bindings",
-  "version": "0.1.0",
-  "private": true,
+  "version": "0.2.0",
   "description": "Minimal DOM data binding with RxJS 7 and no web framework.",
   "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/rxjs-bindings.js",
+  "module": "./dist/rxjs-bindings.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/rxjs-bindings.js"
+    }
+  },
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "npm run build:lib && npm run build:demo",
+    "build:lib": "vite build --config vite.lib.config.ts && tsc -p tsconfig.lib.json",
+    "build:demo": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p sample"
   },
-  "dependencies": {
-    "rxjs": "^7.8.2"
+  "peerDependencies": {
+    "rxjs": "^7.8.0"
   },
   "devDependencies": {
+    "rxjs": "^7.8.2",
     "typescript": "^5.9.0",
     "vite": "^7.0.0"
   }

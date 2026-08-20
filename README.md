@@ -67,6 +67,9 @@ The binding layer therefore contains only **DOM sink functions**. Each function 
 | `[style.width]="width"` | `bindStyle(element, 'width', width$)` |
 | `(click)="..."` | `fromEvent(element, 'click')` |
 | `[(ngModel)]="value"` | `fromEvent(...)` + `bindProperty(...)` |
+| `*ngIf` | `bindIf(host, condition$, createBranchView)` |
+| `*ngFor` + `trackBy` | `bindList(host, items$, keyOf, createItemView)` |
+| `<router-outlet>` | `bindRouteView(host, route$, createRouteView)` |
 | `FormControl` | `Observable<ControlState<T>>` |
 | `valueChanges` | projection of `ControlState<T>` |
 | `HttpClient` request state | `Observable<LoadingState<T>>` |
@@ -655,6 +658,110 @@ appLifetime.unsubscribe();
 
 This gives `rxjs-bindings` the missing structural view layer without creating another reactive framework inside RxJS.
 
+## Structural bindings V1
+
+The primitive sinks apply values to existing DOM. Structural bindings decide **which views exist** — and therefore which subscriptions run:
+
+```text
+Observable<boolean>      ──► bindIf()        ──► one view mounted / unmounted
+Observable<readonly T[]> ──► bindList()      ──► keyed item views reconciled
+Observable<Route>        ──► bindRouteView() ──► route view replaced
+```
+
+All three follow the same contract as the primitive sinks: they return the
+`Subscription` that owns everything they mounted, and they contain no domain
+logic. Each mounted view is a normal `View` whose lifetime ends when the
+structure removes it, so bindings, event streams, and child views stop exactly
+when their DOM disappears. Each structural binding owns a dedicated host
+element.
+
+### `bindIf()` — conditional DOM lifetime
+
+```tsx
+bindIf(panelHost, hasSelection$, () =>
+  createView(lifetime => {
+    // bindings registered here end when the condition turns false
+    return <section class="details">…</section> as HTMLElement;
+  }),
+);
+```
+
+A false condition is not CSS hiding: the branch view's lifetime is
+unsubscribed and its node removed. A hidden branch therefore costs nothing.
+
+### `bindList()` — keyed list reconciliation
+
+```tsx
+bindList(
+  listElement,
+  todos$,
+  todo => todo.id,
+  (todo$, id) => createTodoItemView(todo$, id),
+  sameTodo,
+);
+```
+
+Each key gets **one** item view for its whole list lifetime. The view receives
+its item as a remembered `Observable<T>`; an item change flows through that
+stream into ordinary bindings and updates the existing DOM in place. Focus,
+text selection, and other transient DOM state inside item views survive list
+changes. DOM order is applied with minimal moves — an unchanged order performs
+zero DOM operations.
+
+The per-key stream is backed by a `BehaviorSubject` acting as the
+imperative-to-reactive bridge from list emissions into one item's pipeline.
+List state itself stays owned by the upstream `items$` pipeline; `sameItem`
+decides what counts as a genuine item change.
+
+### `bindRouteView()` — Router → View mounting
+
+```tsx
+bindRouteView(outletElement, route$, createRouteView);
+```
+
+Each route emission unsubscribes the previous route view and mounts the next
+one, so route-scoped work ends exactly when its route ends. Route identity
+policy stays upstream where it remains visible RxJS: a `route$` built with
+`distinctUntilChanged(sameRoute)` mounts one view per navigation, not one per
+emission.
+
+### Structural design rule
+
+> A structural binding converts stream emissions into view lifetimes. It owns
+> mounting, teardown, and DOM placement — never what the values mean.
+
+## Use as a package
+
+The library builds as a side-effect-free ES module with `rxjs` as a peer
+dependency:
+
+```bash
+npm run build:lib   # dist/rxjs-bindings.js + .d.ts files
+```
+
+```ts
+import { bindText, bindList, createView, jsx, Fragment } from 'rxjs-bindings';
+```
+
+Consumers configure TypeScript's classic JSX transform with the project
+factory:
+
+```json
+{
+  "compilerOptions": {
+    "jsx": "react",
+    "jsxFactory": "jsx",
+    "jsxFragmentFactory": "Fragment"
+  }
+}
+```
+
+JSX types are resolved through the factory-scoped `jsx.JSX` namespace, so the
+package installs no global `JSX` namespace and cannot collide with another JSX
+runtime's typings in a consuming application. Bundler-based consumers using
+esbuild/Vite mirror the same factory settings (`jsxFactory: 'jsx'`,
+`jsxFragment: 'Fragment'`) so development and production transforms agree.
+
 ## Run the example
 
 ```bash
@@ -662,16 +769,20 @@ npm install
 npm run dev
 ```
 
-Type-check:
+The main demo runs at `/`; the CRUDL Todo sample runs at `/sample/`.
+
+Type-check (covers `src/` and `sample/`):
 
 ```bash
 npm run typecheck
 ```
 
-Production build:
+Builds:
 
 ```bash
-npm run build
+npm run build        # library package + demo site
+npm run build:lib    # dist/       — importable ES module + type declarations
+npm run build:demo   # dist-demo/  — demo site including the Todo sample
 ```
 
 ## Design principles
@@ -698,6 +809,8 @@ npm run build
 - Observable values are never implicitly subscribed by JSX.
 - JSX event props are intentionally avoided; DOM events enter through `fromEvent()`.
 - A view is a DOM node plus an RxJS `Subscription` lifetime.
+- Structural bindings convert stream emissions into view lifetimes; an unmounted view's subscriptions have ended.
+- A keyed list item receives its changes through its own remembered item stream and updates its DOM in place.
 - No external web framework and no change-detection mechanism are required.
 
 ## Contributors
@@ -711,12 +824,13 @@ npm run build
 
 Next architectural steps:
 
-1. `bindIf()` — reactive DOM lifetime / conditional JSX view mounting.
-2. `bindList()` — keyed list reconciliation with JSX item factories.
-3. Router → View mounting — route changes replace mounted JSX views.
-4. Router + HTTP — route selection drives request intent and cancellation.
-5. Router V2 — internal-link interception, query parameters, redirects, and typed NotFound handling.
-6. HTTP V2 — retry, timeout, refresh, and optional previous-value retention while reloading.
-7. Form Control V2 — disabled/enabled state and status projection.
-8. Form Control V3 — asynchronous validation with an explicit cancellation policy.
-9. `FormGroup` / `FormArray` — aggregate control state and validation.
+1. Router + HTTP — route selection drives request intent and cancellation.
+2. Router V2 — internal-link interception, query parameters, redirects, and typed NotFound handling.
+3. HTTP V2 — retry, timeout, refresh, and optional previous-value retention while reloading.
+4. Form Control V2 — disabled/enabled state and status projection.
+5. Form Control V3 — asynchronous validation with an explicit cancellation policy.
+6. `FormGroup` / `FormArray` — aggregate control state and validation.
+
+Completed steps: `bindIf()`, `bindList()`, and Router → View mounting
+(`bindRouteView()`) are implemented as core structural bindings, and the
+project is packaged as an importable library (see “Use as a package”).

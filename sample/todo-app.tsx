@@ -8,7 +8,10 @@ import {
   scan,
   startWith,
   tap,
+  type Observable,
 } from 'rxjs';
+import { bindIf } from '../src/bind-if';
+import { bindList } from '../src/bind-list';
 import {
   bindAttribute,
   bindClass,
@@ -18,7 +21,6 @@ import {
 import { Fragment, jsx } from '../src/jsx';
 import { shareLatest } from '../src/share-latest';
 import { createView, mountApp, type View } from '../src/view';
-import { bindKeyedList } from './bind-keyed-list';
 import {
   countCompleted,
   createInitialTodoState,
@@ -29,6 +31,7 @@ import {
   selectTodoById,
   type Todo,
   type TodoAction,
+  type TodoId,
 } from './todo-domain';
 
 const storageKey = 'rxjs-bindings.todos.v1';
@@ -72,18 +75,18 @@ const saveTodos = (todos: readonly Todo[]): void => {
 
 const newTodoId = (): string => crypto.randomUUID();
 
+// One view per Todo key for its whole list lifetime. Item changes arrive
+// through todo$ and update the existing DOM in place, so focus and text
+// selection inside the row survive renames and toggles elsewhere.
 const createTodoItemView = (
-  todo: Todo,
+  todo$: Observable<Todo>,
+  todoId: TodoId,
   actionSink: Subject<TodoAction>,
 ): View<HTMLLIElement> =>
   createView(lifetime => {
-    const checkbox = (
-      <input type="checkbox" checked={todo.completed} />
-    ) as HTMLInputElement;
-    const title = <strong>{todo.title}</strong> as HTMLElement;
-    const editInput = (
-      <input type="text" value={todo.title} aria-label={`Rename ${todo.title}`} />
-    ) as HTMLInputElement;
+    const checkbox = <input type="checkbox" /> as HTMLInputElement;
+    const title = <strong /> as HTMLElement;
+    const editInput = <input type="text" /> as HTMLInputElement;
     const editForm = (
       <form class="todo-edit-form">
         {editInput}
@@ -96,40 +99,8 @@ const createTodoItemView = (
     const deleteButton = (
       <button type="button">Delete</button>
     ) as HTMLButtonElement;
-
-    lifetime.add(
-      fromEvent(checkbox, 'change').pipe(
-        map((): TodoAction => ({ type: 'toggled', id: todo.id })),
-      ).subscribe(actionSink),
-    );
-
-    lifetime.add(
-      fromEvent(editForm, 'submit').pipe(
-        tap(event => event.preventDefault()),
-        map(() => normalizeTitle(editInput.value)),
-        filter(renamedTitle => renamedTitle !== ''),
-        map((renamedTitle): TodoAction => ({
-          type: 'renamed',
-          id: todo.id,
-          title: renamedTitle,
-        })),
-      ).subscribe(actionSink),
-    );
-
-    lifetime.add(
-      fromEvent(readButton, 'click').pipe(
-        map((): TodoAction => ({ type: 'selected', id: todo.id })),
-      ).subscribe(actionSink),
-    );
-
-    lifetime.add(
-      fromEvent(deleteButton, 'click').pipe(
-        map((): TodoAction => ({ type: 'deleted', id: todo.id })),
-      ).subscribe(actionSink),
-    );
-
-    return (
-      <li class={todo.completed ? 'todo completed' : 'todo'} data-id={todo.id}>
+    const item = (
+      <li class="todo" data-id={todoId}>
         <label class="todo-toggle">
           {checkbox}
           {title}
@@ -141,6 +112,57 @@ const createTodoItemView = (
         </div>
       </li>
     ) as HTMLLIElement;
+
+    const title$ = todo$.pipe(
+      map(todo => todo.title),
+      distinctUntilChanged(),
+    );
+
+    const completed$ = todo$.pipe(
+      map(todo => todo.completed),
+      distinctUntilChanged(),
+    );
+
+    lifetime.add(bindText(title, title$));
+    lifetime.add(bindProperty(checkbox, 'checked', completed$));
+    lifetime.add(bindProperty(editInput, 'value', title$));
+    lifetime.add(bindClass(item, 'completed', completed$));
+    lifetime.add(bindAttribute(editInput, 'aria-label', title$.pipe(
+      map(currentTitle => `Rename ${currentTitle}`),
+    )));
+
+    lifetime.add(
+      fromEvent(checkbox, 'change').pipe(
+        map((): TodoAction => ({ type: 'toggled', id: todoId })),
+      ).subscribe(actionSink),
+    );
+
+    lifetime.add(
+      fromEvent(editForm, 'submit').pipe(
+        tap(event => event.preventDefault()),
+        map(() => normalizeTitle(editInput.value)),
+        filter(renamedTitle => renamedTitle !== ''),
+        map((renamedTitle): TodoAction => ({
+          type: 'renamed',
+          id: todoId,
+          title: renamedTitle,
+        })),
+      ).subscribe(actionSink),
+    );
+
+    lifetime.add(
+      fromEvent(readButton, 'click').pipe(
+        map((): TodoAction => ({ type: 'selected', id: todoId })),
+      ).subscribe(actionSink),
+    );
+
+    lifetime.add(
+      fromEvent(deleteButton, 'click').pipe(
+        map((): TodoAction => ({ type: 'deleted', id: todoId })),
+      ).subscribe(actionSink),
+    );
+
+    return item;
   });
 
 const createTodoAppView = () =>
@@ -170,20 +192,7 @@ const createTodoAppView = () =>
     const totalElement = <strong /> as HTMLElement;
     const completedElement = <strong /> as HTMLElement;
     const activeElement = <strong /> as HTMLElement;
-
-    const selectedPanel = <section class="todo-read-panel" /> as HTMLElement;
-    const selectedTitle = <strong /> as HTMLElement;
-    const selectedStatus = <span /> as HTMLElement;
-    const clearSelectionButton = (
-      <button type="button">Close details</button>
-    ) as HTMLButtonElement;
-
-    selectedPanel.append(
-      <h2>Read selected todo</h2>,
-      <p>Title: {selectedTitle}</p>,
-      <p>Status: {selectedStatus}</p>,
-      clearSelectionButton,
-    );
+    const selectedPanelHost = <div /> as HTMLElement;
 
     const initialState = createInitialTodoState(loadTodos());
 
@@ -204,14 +213,9 @@ const createTodoAppView = () =>
       } satisfies TodoAction)),
     );
 
-    const clearSelection$ = fromEvent(clearSelectionButton, 'click').pipe(
-      map(() => ({ type: 'selectionCleared' } satisfies TodoAction)),
-    );
-
     const action$ = merge(
       draftChanged$,
       created$,
-      clearSelection$,
       actionSink,
     );
 
@@ -269,23 +273,51 @@ const createTodoAppView = () =>
       distinctUntilChanged(),
     );
 
+    // The read panel mounts only while a Todo is selected. bindIf tears the
+    // whole branch view down on deselection, so its bindings and the close
+    // button's event stream do not outlive the selection.
+    const createSelectedPanelView = (): View<HTMLElement> =>
+      createView(panelLifetime => {
+        const selectedTitle = <strong /> as HTMLElement;
+        const selectedStatus = <span /> as HTMLElement;
+        const clearSelectionButton = (
+          <button type="button">Close details</button>
+        ) as HTMLButtonElement;
+
+        panelLifetime.add(bindText(selectedTitle, selectedTitle$));
+        panelLifetime.add(bindText(selectedStatus, selectedStatus$));
+
+        panelLifetime.add(
+          fromEvent(clearSelectionButton, 'click').pipe(
+            map((): TodoAction => ({ type: 'selectionCleared' })),
+          ).subscribe(actionSink),
+        );
+
+        return (
+          <section class="todo-read-panel">
+            <h2>Read selected todo</h2>
+            <p>Title: {selectedTitle}</p>
+            <p>Status: {selectedStatus}</p>
+            {clearSelectionButton}
+          </section>
+        ) as HTMLElement;
+      });
+
     lifetime.add(bindProperty(titleInput, 'value', draft$));
     lifetime.add(bindText(totalElement, total$));
     lifetime.add(bindText(completedElement, completed$));
     lifetime.add(bindText(activeElement, active$));
-    lifetime.add(bindText(selectedTitle, selectedTitle$));
-    lifetime.add(bindText(selectedStatus, selectedStatus$));
-    lifetime.add(bindClass(selectedPanel, 'visible', hasSelection$));
-    lifetime.add(bindAttribute(selectedPanel, 'aria-hidden', hasSelection$.pipe(
-      map(hasSelection => hasSelection ? 'false' : 'true'),
-    )));
 
     lifetime.add(
-      bindKeyedList(
+      bindIf(selectedPanelHost, hasSelection$, createSelectedPanelView),
+    );
+
+    lifetime.add(
+      bindList(
         list,
         todos$,
         todo => todo.id,
-        todo => createTodoItemView(todo, actionSink),
+        (todo$, todoId) => createTodoItemView(todo$, todoId, actionSink),
         sameTodo,
       ),
     );
@@ -320,7 +352,7 @@ const createTodoAppView = () =>
           {list}
         </section>
 
-        {selectedPanel}
+        {selectedPanelHost}
 
         <footer>
           <p>
