@@ -50,6 +50,15 @@
         white-space: pre-wrap;
         overflow-wrap: anywhere;
       }
+      .route-view {
+        padding: 1rem;
+        border: 1px solid currentColor;
+        min-height: 3rem;
+      }
+      .not-found .route-view {
+        outline: 1px solid currentColor;
+        outline-offset: 0.25rem;
+      }
     </style>
   </head>
   <body>
@@ -129,6 +138,38 @@
       <pre id="userResult" class="http-result"></pre>
     </section>
 
+    <hr />
+
+    <section id="routerSection" aria-labelledby="routerTitle">
+      <h2 id="routerTitle">RxJS Router V1</h2>
+      <p>
+        Routes are typed data. Use these buttons for application navigation,
+        then use the browser Back/Forward controls to exercise
+        <code>popstate</code>.
+      </p>
+
+      <div class="row">
+        <button id="routeHome" type="button">Home</button>
+        <button id="routeUser1" type="button">User 1</button>
+        <button id="routeUser2" type="button">User 2</button>
+        <button id="routeSettings" type="button">Settings</button>
+        <button id="routeReplaceHome" type="button">Replace with Home</button>
+      </div>
+
+      <dl class="control-state">
+        <dt>URL</dt>
+        <dd><code id="routeUrl"></code></dd>
+        <dt>route</dt>
+        <dd><code id="routeType"></code></dd>
+        <dt>params</dt>
+        <dd><code id="routeParams"></code></dd>
+      </dl>
+
+      <h3>Route view</h3>
+      <div id="routeView" class="route-view"></div>
+    </section>
+
     <script type="module" src="/src/main.ts"></script>
+    <script type="module" src="/src/router-demo.ts"></script>
   </body>
 </html>

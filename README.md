@@ -68,6 +68,10 @@ The binding layer therefore contains only **DOM sink functions**. Each function 
 | `FormControl` | `Observable<ControlState<T>>` |
 | `valueChanges` | projection of `ControlState<T>` |
 | `HttpClient` request state | `Observable<LoadingState<T>>` |
+| `Router` | `NavigationCommand$` + History API |
+| `ActivatedRoute` | `Route$` projections |
+| route params | typed fields on `Route` |
+| current route | remembered `Route$` via `shareLatest()` |
 
 Two-way binding is not a primitive. It is two one-way dataflows:
 
@@ -287,6 +291,101 @@ The demo uses JSONPlaceholder's public `/users/:id` resource. The Load button re
 
 > An HTTP request is a temporal state transition: **Idle → Loading → Success | Error**, governed by an explicit RxJS concurrency and cancellation policy.
 
+## RxJS Router V1
+
+Router V1 does **not** recreate Angular's `Router` or `ActivatedRoute` objects. Routing is modeled as typed route data flowing from browser location sources.
+
+```text
+initial browser location ─────┐
+                              │
+popstate$ ────────────────────┤
+                              ├──► Location$
+NavigationCommand$ ─► History ┤
+                              │
+                              ▼
+                         map(parseRoute)
+                              │
+                              ▼
+                            Route$
+                              │
+                         shareLatest()
+                              │
+                  ┌───────────┼───────────┐
+                  ▼           ▼           ▼
+              route type    params      route view
+```
+
+### Route is data
+
+```ts
+type Route =
+  | { readonly type: 'home' }
+  | { readonly type: 'user'; readonly id: number }
+  | { readonly type: 'settings' }
+  | { readonly type: 'notFound'; readonly pathname: string };
+```
+
+`parseRoute(location)` and `routeToUrl(route)` are pure TypeScript functions. They own route meaning; RxJS only coordinates values over time.
+
+### Browser and application navigation are separate sources
+
+Back/Forward navigation comes from the browser:
+
+```ts
+const historyLocation$ = fromEvent<PopStateEvent>(window, 'popstate').pipe(
+  map(readBrowserLocation),
+);
+```
+
+Application navigation is represented as typed commands:
+
+```ts
+type NavigationCommand = {
+  readonly mode: 'push' | 'replace';
+  readonly route: Route;
+};
+```
+
+`history.pushState()` and `history.replaceState()` do not emit `popstate`, so after applying the History API effect, the resulting browser location is explicitly folded back into `Location$`.
+
+```text
+NavigationCommand$
+      │
+      │ tap(performNavigation)
+      ▼
+History API effect
+      │
+      │ map(readBrowserLocation)
+      ▼
+application Location$
+```
+
+### Current route is remembered
+
+```ts
+const route$ = location$.pipe(
+  map(parseRoute),
+  distinctUntilChanged(sameRoute),
+  shareLatest(),
+);
+```
+
+This gives route consumers one shared navigation execution and immediate access to the current route.
+
+### Subject use is explicit and narrow
+
+A `Subject<NavigationCommand>` is used only as the bridge for imperative application code that wants to navigate programmatically. It does not store route state. Route state remains `Route$`.
+
+```ts
+navigate({ type: 'user', id: 42 });
+```
+
+### Router design rule
+
+> Route parsing is pure TypeScript, navigation mutation is an imperative History API effect, and temporal coordination is RxJS.
+
+Router V1 intentionally postpones internal-link interception, query-parameter typing, guards, redirects, lazy views, and Router + HTTP composition until the core navigation machine is established.
+
 ## Run the example
 
 ```bash
@@ -321,6 +420,9 @@ npm run build
 - Validation rules are pure TypeScript functions.
 - HTTP lifecycle is `LoadingState` data, not separate mutable loading/value/error flags.
 - Flattening operators remain visible because they express request concurrency and cancellation policy.
+- Route parsing and serialization are pure TypeScript functions.
+- Browser navigation is a source; History mutation is an explicit effect.
+- Current route is a shared, remembered `Route$`, not a mutable router object.
 - No framework and no change-detection mechanism are required.
 
 ## Contributors
@@ -335,9 +437,9 @@ npm run build
 Next architectural steps:
 
 1. `bindIf()` — reactive DOM lifetime / conditional mounting.
-2. HTTP V2 — retry, timeout, refresh, and optional previous-value retention while reloading.
-3. Router — browser location as a remembered route stream.
-4. Router + HTTP — route selection drives request intent and cancellation.
+2. Router + HTTP — route selection drives request intent and cancellation.
+3. Router V2 — internal-link interception, query parameters, redirects, and typed NotFound handling.
+4. HTTP V2 — retry, timeout, refresh, and optional previous-value retention while reloading.
 5. Form Control V2 — disabled/enabled state and status projection.
 6. Form Control V3 — asynchronous validation with an explicit cancellation policy.
 7. `FormGroup` / `FormArray` — aggregate control state and validation.
