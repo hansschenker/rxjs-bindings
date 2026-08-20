@@ -72,6 +72,9 @@ The binding layer therefore contains only **DOM sink functions**. Each function 
 | `ActivatedRoute` | `Route$` projections |
 | route params | typed fields on `Route` |
 | current route | remembered `Route$` via `shareLatest()` |
+| Angular animations | `animationFrames()` + pure functions + `bindStyle()` |
+| animation interruption | `switchMap()` |
+| animation queueing | `concatMap()` |
 
 Two-way binding is not a primitive. It is two one-way dataflows:
 
@@ -386,6 +389,143 @@ navigate({ type: 'user', id: 42 });
 
 Router V1 intentionally postpones internal-link interception, query-parameter typing, guards, redirects, lazy views, and Router + HTTP composition until the core navigation machine is established.
 
+
+## RxJS Animation V1
+
+Animation V1 does **not** recreate Angular's animation DSL. An animation is modeled as values changing over browser frame time:
+
+```text
+animationFrames()
+       │
+       ▼
+ elapsed frame time
+       │
+       ▼
+ progress 0..1
+       │
+       │ map(easing)
+       ▼
+ eased progress
+       │
+       │ map(interpolation)
+       ▼
+ style value
+       │
+       ▼
+ bindStyle()
+       │
+       ▼
+      DOM
+```
+
+### Time is a source
+
+RxJS 7 already exposes the browser animation clock through `animationFrames()`. The project adds one small helper that converts elapsed frame time into normalized progress:
+
+```ts
+export const progressOver = (
+  durationMs: number,
+): Observable<number> =>
+  animationFrames().pipe(
+    map(({ elapsed }) => clamp01(elapsed / durationMs)),
+    startWith(0),
+    takeWhile(progress => progress < 1, true),
+  );
+```
+
+`progressOver(900)` emits values from `0` toward `1` and completes after the terminal `1` emission. The helper does not own easing, interpolation, or DOM effects.
+
+### Easing and interpolation are pure TypeScript
+
+```ts
+type Easing = (progress: number) => number;
+
+const easeInOutCubic: Easing = progress =>
+  progress < 0.5
+    ? 4 * progress * progress * progress
+    : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+
+const lerp = (
+  from: number,
+  to: number,
+  progress: number,
+): number =>
+  from + (to - from) * progress;
+```
+
+RxJS moves progress values to these functions; the pure functions decide how those values are transformed.
+
+### One animation execution can drive many DOM properties
+
+```ts
+const progress$ = progressOver(900).pipe(
+  map(easeInOutCubic),
+  shareLatest(),
+);
+```
+
+From that one shared progress stream, the demo derives transform, opacity, and progress text independently. `shareLatest()` prevents each DOM binding from creating its own animation-frame execution.
+
+### Flattening operators are animation policies
+
+The demo deliberately implements the same animation with two different policies.
+
+Latest wins:
+
+```ts
+const latestProgress$ = click$.pipe(
+  switchMap(() => progressOver(900).pipe(
+    map(easeInOutCubic),
+  )),
+  startWith(0),
+  shareLatest(),
+);
+```
+
+A new click cancels the current run and starts the latest one.
+
+Queue:
+
+```ts
+const queuedProgress$ = click$.pipe(
+  concatMap(() => progressOver(900).pipe(
+    map(easeInOutCubic),
+  )),
+  startWith(0),
+  shareLatest(),
+);
+```
+
+A new click waits until earlier runs complete.
+
+This gives the flattening operators direct animation meaning:
+
+```text
+switchMap  → replace active animation with latest
+concatMap  → queue animations
+mergeMap   → allow animations to overlap
+exhaustMap → ignore triggers while animation is active
+```
+
+### Angular animation correspondence
+
+| Angular animation concept | RxJS + TypeScript |
+| --- | --- |
+| `trigger()` | event/state stream |
+| `state()` | typed application state |
+| `transition()` | state-transition stream |
+| `animate()` | `animationFrames()` / `progressOver()` |
+| easing string | pure `Easing` function |
+| `style()` | `bindStyle()` |
+| interruption policy | `switchMap()` |
+| sequencing policy | `concatMap()` |
+
+### Animation design rule
+
+> An animation is a value changing over frame time. RxJS supplies time and execution policy, pure TypeScript computes the value, and `bindStyle()` applies it to the DOM.
+
+Simple visual transitions should still use CSS when CSS is sufficient. RxJS animation is most useful when timing, cancellation, sequencing, route state, form state, HTTP state, or other application streams participate in the animation.
+
 ## Run the example
 
 ```bash
@@ -423,6 +563,8 @@ npm run build
 - Route parsing and serialization are pure TypeScript functions.
 - Browser navigation is a source; History mutation is an explicit effect.
 - Current route is a shared, remembered `Route$`, not a mutable router object.
+- Animation time comes from `animationFrames()`; easing and interpolation stay pure.
+- Animation interruption and queueing remain visible as flattening policies.
 - No framework and no change-detection mechanism are required.
 
 ## Contributors

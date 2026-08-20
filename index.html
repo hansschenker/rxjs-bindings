@@ -59,6 +59,21 @@
         outline: 1px solid currentColor;
         outline-offset: 0.25rem;
       }
+      .animation-track {
+        width: min(100%, 22rem);
+        min-height: 4rem;
+        padding: 0.5rem;
+        border: 1px solid currentColor;
+        overflow: hidden;
+      }
+      .animation-box {
+        width: 3rem;
+        height: 3rem;
+        display: grid;
+        place-items: center;
+        border: 1px solid currentColor;
+        will-change: transform, opacity;
+      }
     </style>
   </head>
   <body>
@@ -169,7 +184,39 @@
       <div id="routeView" class="route-view"></div>
     </section>
 
+
+    <hr />
+
+    <section id="animationSection" aria-labelledby="animationTitle">
+      <h2 id="animationTitle">RxJS Animation V1</h2>
+      <p>
+        Frame time comes from <code>animationFrames()</code>. The same animation
+        uses two different flattening policies: <code>switchMap</code> replaces
+        an active run, while <code>concatMap</code> queues later runs. Click each
+        button rapidly to see the policy difference.
+      </p>
+
+      <h3>Latest wins — switchMap</h3>
+      <div class="row">
+        <button id="animationLatest" type="button">Start / replace animation</button>
+        <span>progress: <code id="animationLatestProgress"></code></span>
+      </div>
+      <div class="animation-track">
+        <div id="animationLatestBox" class="animation-box">A</div>
+      </div>
+
+      <h3>Queue — concatMap</h3>
+      <div class="row">
+        <button id="animationQueue" type="button">Queue animation</button>
+        <span>progress: <code id="animationQueueProgress"></code></span>
+      </div>
+      <div class="animation-track">
+        <div id="animationQueueBox" class="animation-box">B</div>
+      </div>
+    </section>
+
     <script type="module" src="/src/main.ts"></script>
     <script type="module" src="/src/router-demo.ts"></script>
+    <script type="module" src="/src/animation-demo.ts"></script>
   </body>
 </html>
