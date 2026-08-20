@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RxJS Bindings</title>
+    <style>
+      :root {
+        font-family: system-ui, sans-serif;
+        color-scheme: light dark;
+      }
+      body {
+        max-width: 42rem;
+        margin: 4rem auto;
+        padding: 0 1rem;
+      }
+      .row {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+        margin-block: 1rem;
+      }
+      input, button {
+        font: inherit;
+        padding: 0.5rem 0.75rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1 id="title"></h1>
+
+    <label class="row">
+      <span>Name</span>
+      <input id="nameInput" autocomplete="off" />
+    </label>
+
+    <p>Hello <strong id="name"></strong></p>
+    <p>Counter: <strong id="count"></strong></p>
+
+    <div class="row">
+      <button id="decrement" type="button">−</button>
+      <button id="increment" type="button">+</button>
+      <button id="reset" type="button">Reset</button>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
