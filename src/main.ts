@@ -7,7 +7,13 @@ import {
   startWith,
   distinctUntilChanged,
 } from 'rxjs';
-import { bindProperty, bindText } from './bindings';
+import {
+  bindAttribute,
+  bindClass,
+  bindProperty,
+  bindStyle,
+  bindText,
+} from './bindings';
 
 type State = {
   readonly title: string;
@@ -97,6 +103,25 @@ const decrementDisabled$ = state$.pipe(
   distinctUntilChanged(),
 );
 
+const nameTitle$ = state$.pipe(
+  map(state => state.name === '' ? null : `Current name: ${state.name}`),
+  distinctUntilChanged(),
+);
+
+const countIsZero$ = state$.pipe(
+  map(state => state.count === 0),
+  distinctUntilChanged(),
+);
+
+const countFontSize$ = state$.pipe(
+  map(state =>
+    state.count === 0
+      ? null
+      : `${1 + Math.min(state.count, 5) * 0.1}rem`,
+  ),
+  distinctUntilChanged(),
+);
+
 // EXIT RXJS WORLD: state projections are connected to imperative DOM sinks.
 const bindings = [
   bindText(titleElement, title$),
@@ -104,6 +129,9 @@ const bindings = [
   bindText(countElement, count$),
   bindProperty(nameInput, 'value', name$),
   bindProperty(decrementButton, 'disabled', decrementDisabled$),
+  bindAttribute(nameElement, 'title', nameTitle$),
+  bindClass(countElement, 'is-zero', countIsZero$),
+  bindStyle(countElement, 'font-size', countFontSize$),
 ];
 
 // Explicit lifecycle/cancellation boundary for the demo.
