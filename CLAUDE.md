@@ -17,9 +17,11 @@ npm run build       # build:lib + build:demo
 npm run build:lib   # dist/ — library ES module (vite.lib.config.ts) + .d.ts (tsconfig.lib.json)
 npm run build:demo  # dist-demo/ — demo site, MPA build including sample/index.html
 npm run preview     # preview dist-demo
+npm test            # Vitest over jsdom — suites in tests/, one file per src module
+npm run test:watch  # Vitest watch mode
 ```
 
-There is no test runner or linter configured.
+There is no linter configured. Tests are typechecked by `npm run typecheck` (root tsconfig includes `tests/`); vitest config is `vitest.config.ts`.
 
 ## Packaging
 

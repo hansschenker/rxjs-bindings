@@ -827,6 +827,12 @@ Type-check (covers `src/` and `sample/`):
 npm run typecheck
 ```
 
+Unit tests (Vitest over jsdom, one suite per core module in `tests/`):
+
+```bash
+npm test
+```
+
 Builds:
 
 ```bash
