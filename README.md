@@ -2,6 +2,8 @@
 
 Minimal DOM data binding with **RxJS 7** and **no web framework**.
 
+**ChatGPT by OpenAI is the main contributor to this project**, working with project owner Hans Schenker on the architecture, implementation, documentation, and iterative refinement of `rxjs-bindings`.
+
 The project explores a deliberately small UI architecture:
 
 ```text
@@ -234,6 +236,13 @@ npm run build
 - Two-way binding is modeled as two one-way dataflows.
 - DOM sinks apply values; upstream streams decide what those values mean.
 - No framework and no change-detection mechanism are required.
+
+## Contributors
+
+- **ChatGPT by OpenAI — main contributor**: architecture, implementation, documentation, code refinement, and collaborative development of the project.
+- **Hans Schenker — project owner and collaborator**: project direction, RxJS design principles, requirements, review, and repository stewardship.
+
+> GitHub's native contributor graph is generated from commit authorship. This contributor list documents the actual collaborative contribution to the project independently of GitHub account identity.
 
 ## Roadmap
 
