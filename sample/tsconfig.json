@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": [
+    "./**/*.ts",
+    "./**/*.tsx",
+    "../src/bindings.ts",
+    "../src/jsx.ts",
+    "../src/share-latest.ts",
+    "../src/view.ts"
+  ]
+}
