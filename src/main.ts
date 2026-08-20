@@ -1,11 +1,16 @@
 import {
+  catchError,
   distinctUntilChanged,
   fromEvent,
   map,
   merge,
+  Observable,
+  of,
   scan,
   startWith,
+  switchMap,
 } from 'rxjs';
+import { ajax } from 'rxjs/ajax';
 import {
   bindAttribute,
   bindClass,
@@ -19,6 +24,13 @@ import {
   type ControlAction,
   type Validator,
 } from './form-control';
+import {
+  failure,
+  idle,
+  loading,
+  success,
+  type LoadingState,
+} from './loading-state';
 import { shareLatest } from './share-latest';
 
 type State = {
@@ -32,6 +44,15 @@ type Action =
   | { readonly type: 'increment' }
   | { readonly type: 'decrement' }
   | { readonly type: 'reset' };
+
+type User = {
+  readonly id: number;
+  readonly name: string;
+  readonly username: string;
+  readonly email: string;
+  readonly phone: string;
+  readonly website: string;
+};
 
 const initialState: State = {
   title: 'RxJS Bindings',
@@ -65,6 +86,14 @@ const minLength = (requiredLength: number): Validator<string> => value =>
       }
     : null;
 
+const loadUser = (id: number): Observable<User> =>
+  ajax.getJSON<User>(`https://jsonplaceholder.typicode.com/users/${id}`);
+
+const formatUser = (user: User): string => JSON.stringify(user, null, 2);
+
+const formatError = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
 const titleElement = document.querySelector<HTMLHeadingElement>('#title')!;
 const nameElement = document.querySelector<HTMLElement>('#name')!;
 const countElement = document.querySelector<HTMLElement>('#count')!;
@@ -83,6 +112,14 @@ const emailValidElement = document.querySelector<HTMLElement>('#emailValid')!;
 const emailDirtyElement = document.querySelector<HTMLElement>('#emailDirty')!;
 const emailTouchedElement = document.querySelector<HTMLElement>('#emailTouched')!;
 const emailErrorsElement = document.querySelector<HTMLElement>('#emailErrors')!;
+
+const httpSection = document.querySelector<HTMLElement>('#httpSection')!;
+const userIdInput = document.querySelector<HTMLInputElement>('#userIdInput')!;
+const userLoadButton = document.querySelector<HTMLButtonElement>('#userLoad')!;
+const userStatusElement = document.querySelector<HTMLElement>('#userStatus')!;
+const userLoadingElement = document.querySelector<HTMLElement>('#userLoading')!;
+const userResultElement = document.querySelector<HTMLElement>('#userResult')!;
+const userErrorElement = document.querySelector<HTMLElement>('#userError')!;
 
 // ENTER RXJS WORLD: DOM events become source streams.
 const nameChanged$ = fromEvent<InputEvent>(nameInput, 'input').pipe(
@@ -231,6 +268,56 @@ const emailAriaInvalid$ = emailInvalid$.pipe(
   map(invalid => String(invalid)),
 );
 
+// HTTP: request intents choose an explicit latest-request-wins policy.
+const userId$ = fromEvent(userLoadButton, 'click').pipe(
+  map(() => Number(userIdInput.value)),
+);
+
+const userLoadingState$ = userId$.pipe(
+  switchMap(id =>
+    loadUser(id).pipe(
+      map(success),
+      catchError((error: unknown) => of(failure(error))),
+      startWith(loading()),
+    ),
+  ),
+  startWith(idle()),
+  shareLatest<LoadingState<User>>(),
+);
+
+const userLoading$ = userLoadingState$.pipe(
+  map(state => state.status === 'loading'),
+  distinctUntilChanged(),
+);
+
+const userStatus$ = userLoadingState$.pipe(
+  map(state => state.status),
+  distinctUntilChanged(),
+);
+
+const userLoadingText$ = userLoading$.pipe(
+  map(isLoading => String(isLoading)),
+);
+
+const userResultText$ = userLoadingState$.pipe(
+  map(state => state.status === 'success' ? formatUser(state.value) : ''),
+  distinctUntilChanged(),
+);
+
+const userErrorText$ = userLoadingState$.pipe(
+  map(state => state.status === 'error' ? formatError(state.error) : ''),
+  distinctUntilChanged(),
+);
+
+const userAriaBusy$ = userLoading$.pipe(
+  map(isLoading => isLoading ? 'true' : null),
+);
+
+const userHasError$ = userLoadingState$.pipe(
+  map(state => state.status === 'error'),
+  distinctUntilChanged(),
+);
+
 // EXIT RXJS WORLD: state projections are connected to imperative DOM sinks.
 const bindings = [
   bindText(titleElement, title$),
@@ -250,6 +337,14 @@ const bindings = [
   bindText(emailDirtyElement, emailDirtyText$),
   bindText(emailTouchedElement, emailTouchedText$),
   bindText(emailErrorsElement, emailErrorsText$),
+
+  bindAttribute(httpSection, 'aria-busy', userAriaBusy$),
+  bindClass(httpSection, 'loading', userLoading$),
+  bindClass(httpSection, 'has-error', userHasError$),
+  bindText(userStatusElement, userStatus$),
+  bindText(userLoadingElement, userLoadingText$),
+  bindText(userResultElement, userResultText$),
+  bindText(userErrorElement, userErrorText$),
 ];
 
 // Explicit lifecycle/cancellation boundary for the demo.

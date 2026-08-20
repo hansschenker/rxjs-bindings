@@ -39,6 +39,17 @@
       code {
         overflow-wrap: anywhere;
       }
+      .loading {
+        opacity: 0.75;
+      }
+      .has-error {
+        outline: 1px solid currentColor;
+        outline-offset: 0.75rem;
+      }
+      .http-result {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
     </style>
   </head>
   <body>
@@ -85,6 +96,37 @@
         <dt>errors</dt>
         <dd><code id="emailErrors"></code></dd>
       </dl>
+    </section>
+
+    <hr />
+
+    <section id="httpSection" aria-labelledby="httpTitle">
+      <h2 id="httpTitle">RxJS HTTP LoadingState</h2>
+      <p>
+        Load JSONPlaceholder users 1–10. Try an unknown id such as 999 to
+        exercise the error state. The load button stays active so a new click
+        can replace an active request through <code>switchMap</code>.
+      </p>
+
+      <div class="row">
+        <label>
+          User ID
+          <input id="userIdInput" type="number" min="1" value="1" />
+        </label>
+        <button id="userLoad" type="button">Load user</button>
+      </div>
+
+      <dl class="control-state">
+        <dt>status</dt>
+        <dd><code id="userStatus"></code></dd>
+        <dt>loading</dt>
+        <dd><code id="userLoading"></code></dd>
+        <dt>error</dt>
+        <dd><code id="userError"></code></dd>
+      </dl>
+
+      <h3>Result</h3>
+      <pre id="userResult" class="http-result"></pre>
     </section>
 
     <script type="module" src="/src/main.ts"></script>
