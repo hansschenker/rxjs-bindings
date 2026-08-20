@@ -6,7 +6,11 @@
 
 The project asks a simple question:
 
-> How much of a modern web framework can be expressed directly with RxJS, TypeScript, JSX, and the browser without introducing a large framework runtime?
+> How much of a modern web framework can be expressed directly with 
+- RxJS, 
+- TypeScript, 
+- JSX, 
+- and the browser without introducing a large framework runtime?
 
 The answer turned out to be: quite a lot.
 
@@ -26,7 +30,10 @@ The goal is not to reproduce Angular feature by feature, and it is not to hide R
 
 The goal is the opposite:
 
-> Keep the browser visible. Keep RxJS visible. Keep TypeScript functions visible. Add only the small amount of glue that is genuinely missing.
+> - Keep the browser visible. 
+- Keep RxJS visible. 
+- Keep TypeScript functions visible. 
+- Add only the small amount of glue that is genuinely missing.
 
 This produces a web architecture with a surprisingly small conceptual core.
 
