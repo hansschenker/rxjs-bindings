@@ -891,3 +891,7 @@ Completed steps: `bindIf()`, `bindList()`, and Router → View mounting
 (`bindRouteView()`) are implemented as core structural bindings; the project
 is packaged as an importable library (see “Use as a package”); and Router +
 HTTP composition is demonstrated in the router demo (see “Router + HTTP V1”).
+
+## License
+
+[MIT](./LICENSE)
