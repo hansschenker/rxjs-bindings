@@ -1,39 +1,38 @@
 # rxjs-bindings
 
-Minimal DOM data binding and application dataflow with **RxJS 7**, **TypeScript**, and **no web framework**.
+Minimal DOM data binding and application dataflow with **RxJS 7**, **TypeScript JSX**, browser APIs, and **no external web framework**.
 
 **ChatGPT by OpenAI is the main contributor to this project**, working with project owner Hans Schenker on the architecture, implementation, documentation, and iterative refinement of `rxjs-bindings`.
 
-The project explores how far standard RxJS plus a very small DOM boundary can replace framework machinery while keeping time, cancellation, sharing, state, and effects explicit.
+The project explores how far standard RxJS, TypeScript JSX, and a very small DOM boundary can replace framework machinery while keeping time, cancellation, sharing, state, lifetime, and effects explicit.
 
 ```text
-DOM / browser sources
-        │
-        ▼
-     fromEvent()
-        │
-        ▼
- Observable<Action>
-        │
-        ▼
- operators + pure TypeScript functions
-        │
-        ▼
- remembered state / effect state
-        │
-    shareLatest()
-        │
-        ▼
- Observable<State>
-        │
-        ├──► bindText()
-        ├──► bindProperty()
-        ├──► bindAttribute()
-        ├──► bindClass()
-        └──► bindStyle()
-                 │
-                 ▼
-                DOM
+TypeScript JSX ──► jsx() ─────────────────────────────► DOM structure
+                                                        ▲
+DOM / browser sources                                   │
+        │                                               │
+        ▼                                               │
+     fromEvent()                                        │
+        │                                               │
+        ▼                                               │
+ Observable<Action>                                     │
+        │                                               │
+        ▼                                               │
+ operators + pure TypeScript functions                  │
+        │                                               │
+        ▼                                               │
+ remembered state / effect state                        │
+        │                                               │
+    shareLatest()                                       │
+        │                                               │
+        ▼                                               │
+ Observable<State>                                      │
+        │                                               │
+        ├──► bindText() ────────────────────────────────┤
+        ├──► bindProperty() ────────────────────────────┤
+        ├──► bindAttribute() ───────────────────────────┤
+        ├──► bindClass() ───────────────────────────────┤
+        └──► bindStyle() ───────────────────────────────┘
 ```
 
 ## Core idea
@@ -58,6 +57,9 @@ The binding layer therefore contains only **DOM sink functions**. Each function 
 
 | Angular | RxJS-only equivalent |
 | --- | --- |
+| Angular template | TypeScript JSX + `jsx()` |
+| component view | function + `createView()` |
+| component lifetime | RxJS `Subscription` |
 | `{{ value }}` | `bindText(element, value$)` |
 | `[value]="value"` | `bindProperty(element, 'value', value$)` |
 | `[attr.aria-label]="label"` | `bindAttribute(element, 'aria-label', label$)` |
@@ -123,6 +125,31 @@ bindText(countElement, count$);
 ```
 
 No change-detection loop is required. A DOM binding receives a value only when its stream emits.
+
+### 4. Create DOM structure with TypeScript JSX
+
+JSX is the structural language; it is not a second reactive runtime:
+
+```tsx
+const countElement = <strong /> as HTMLElement;
+
+const root = (
+  <section>
+    <h2>Counter</h2>
+    <p>Count: {countElement}</p>
+  </section>
+);
+
+bindText(countElement, count$);
+```
+
+The separation is intentional:
+
+```text
+TypeScript JSX  → what DOM structure exists
+RxJS            → how values and executions evolve over time
+rxjs-bindings   → where those changing values meet the DOM
+```
 
 ## `shareLatest()`
 
@@ -526,6 +553,108 @@ exhaustMap → ignore triggers while animation is active
 
 Simple visual transitions should still use CSS when CSS is sufficient. RxJS animation is most useful when timing, cancellation, sequencing, route state, form state, HTTP state, or other application streams participate in the animation.
 
+## TypeScript JSX View V1
+
+The view layer uses TypeScript's classic JSX transform with the project's own `jsx()` factory. JSX creates DOM nodes directly; there is no virtual DOM and no hidden template runtime.
+
+```json
+{
+  "jsx": "react",
+  "jsxFactory": "jsx",
+  "jsxFragmentFactory": "Fragment"
+}
+```
+
+The Vite configuration uses the corresponding custom classic JSX factory so development and production transforms agree with TypeScript.
+
+### JSX owns structure, not reactivity
+
+The factory supports intrinsic DOM tags, function components, fragments, static properties/attributes, text children, and existing DOM nodes as children.
+
+```tsx
+const UserName = ({ name }: { readonly name: string }) => (
+  <strong>{name}</strong>
+);
+
+const view = (
+  <article class="user-card">
+    <h2>User</h2>
+    <UserName name="Ada" />
+  </article>
+);
+```
+
+Observable values are deliberately **not** magic JSX children. Reactive values remain explicit:
+
+```tsx
+const countElement = <strong /> as HTMLElement;
+
+bindText(countElement, count$);
+```
+
+JSX event props are deliberately unsupported as well. Events continue to enter the RxJS world through the standard source:
+
+```ts
+const click$ = fromEvent(button, 'click');
+```
+
+This preserves the project rule that standard RxJS mechanisms stay visible.
+
+### View = DOM node + Subscription lifetime
+
+A view has only two pieces:
+
+```ts
+type View<T extends Element = Element> = {
+  readonly node: T;
+  readonly lifetime: Subscription;
+};
+```
+
+`createView()` provides one explicit lifetime scope:
+
+```tsx
+const createCounterView = () =>
+  createView(lifetime => {
+    const countElement = <strong /> as HTMLElement;
+    const button = <button type="button">+</button> as HTMLButtonElement;
+
+    const count$ = fromEvent(button, 'click').pipe(
+      scan(count => count + 1, 0),
+      startWith(0),
+      shareLatest(),
+    );
+
+    lifetime.add(bindText(countElement, count$));
+
+    return (
+      <section>
+        <p>Count: {countElement}</p>
+        {button}
+      </section>
+    ) as HTMLElement;
+  });
+```
+
+The RxJS `Subscription` is the view lifecycle primitive. Unsubscribing a view tears down its bindings/effects and removes its root DOM node. No separate `onDestroy`, hook system, decorator, or component lifecycle runtime is introduced.
+
+### Mounting
+
+```ts
+const appLifetime = mountApp(host, createCounterView());
+
+// Complete teardown:
+appLifetime.unsubscribe();
+```
+
+`mountView()` appends a reusable view; `mountApp()` replaces the root host contents with one application view.
+
+### JSX View design rule
+
+> TypeScript JSX owns DOM structure, RxJS owns temporal behavior, and `Subscription` owns view lifetime. JSX never hides Observable subscription or event-source semantics.
+
+This gives `rxjs-bindings` the missing structural view layer without creating another reactive framework inside RxJS.
+
 ## Run the example
 
 ```bash
@@ -565,7 +694,11 @@ npm run build
 - Current route is a shared, remembered `Route$`, not a mutable router object.
 - Animation time comes from `animationFrames()`; easing and interpolation stay pure.
 - Animation interruption and queueing remain visible as flattening policies.
-- No framework and no change-detection mechanism are required.
+- TypeScript JSX creates DOM structure directly through the project `jsx()` factory.
+- Observable values are never implicitly subscribed by JSX.
+- JSX event props are intentionally avoided; DOM events enter through `fromEvent()`.
+- A view is a DOM node plus an RxJS `Subscription` lifetime.
+- No external web framework and no change-detection mechanism are required.
 
 ## Contributors
 
@@ -578,10 +711,12 @@ npm run build
 
 Next architectural steps:
 
-1. `bindIf()` — reactive DOM lifetime / conditional mounting.
-2. Router + HTTP — route selection drives request intent and cancellation.
-3. Router V2 — internal-link interception, query parameters, redirects, and typed NotFound handling.
-4. HTTP V2 — retry, timeout, refresh, and optional previous-value retention while reloading.
-5. Form Control V2 — disabled/enabled state and status projection.
-6. Form Control V3 — asynchronous validation with an explicit cancellation policy.
-7. `FormGroup` / `FormArray` — aggregate control state and validation.
+1. `bindIf()` — reactive DOM lifetime / conditional JSX view mounting.
+2. `bindList()` — keyed list reconciliation with JSX item factories.
+3. Router → View mounting — route changes replace mounted JSX views.
+4. Router + HTTP — route selection drives request intent and cancellation.
+5. Router V2 — internal-link interception, query parameters, redirects, and typed NotFound handling.
+6. HTTP V2 — retry, timeout, refresh, and optional previous-value retention while reloading.
+7. Form Control V2 — disabled/enabled state and status projection.
+8. Form Control V3 — asynchronous validation with an explicit cancellation policy.
+9. `FormGroup` / `FormArray` — aggregate control state and validation.
