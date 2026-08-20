@@ -49,7 +49,7 @@ Every feature follows the same three-phase dataflow:
 - `loading-state.ts` — `LoadingState<T>` discriminated union (`idle | loading | success | error`) with constructor helpers. Cancellation is not a state variant — it is the flattening operator's policy (`switchMap`).
 - `router.ts` — typed `Route` union, pure `parseRoute` / `routeToUrl` / `sameRoute`. Browser `popstate` is a source; History API mutation is an explicit effect folded back into `Location$`.
 - `animation.ts` — `progressOver(durationMs)` built on `animationFrames()`, plus pure easing/interpolation. Flattening operators are the animation policy (`switchMap` = interrupt, `concatMap` = queue).
-- `main.ts`, `router-demo.tsx`, `animation-demo.ts`, `view-demo.tsx` — demo entry points, all loaded together by `index.html`. Not part of the library build.
+- `main.ts`, `router-demo.tsx`, `animation-demo.ts`, `view-demo.tsx` — demo entry points, all loaded together by `index.html`. Not part of the library build. `router-demo.tsx` also demonstrates the Router + HTTP composition (`Route$` → pure intent projection → `switchMap` → `LoadingState$`) — deliberately a composition of existing primitives, not a new core API.
 
 ### `sample/` — CRUDL Todo app
 

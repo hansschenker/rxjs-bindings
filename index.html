@@ -156,11 +156,13 @@
     <hr />
 
     <section id="routerSection" aria-labelledby="routerTitle">
-      <h2 id="routerTitle">RxJS Router V1</h2>
+      <h2 id="routerTitle">RxJS Router V1 + HTTP</h2>
       <p>
         Routes are typed data. Use these buttons for application navigation,
         then use the browser Back/Forward controls to exercise
-        <code>popstate</code>.
+        <code>popstate</code>. Selecting a user route starts an HTTP request
+        through <code>switchMap</code>; navigating away or to another user id
+        cancels the in-flight request.
       </p>
 
       <div class="row">
@@ -178,6 +180,8 @@
         <dd><code id="routeType"></code></dd>
         <dt>params</dt>
         <dd><code id="routeParams"></code></dd>
+        <dt>request</dt>
+        <dd><code id="routeRequest"></code></dd>
       </dl>
 
       <h3>Route view</h3>

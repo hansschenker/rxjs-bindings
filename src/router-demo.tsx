@@ -1,12 +1,17 @@
 import {
   Subject,
+  catchError,
   distinctUntilChanged,
   fromEvent,
   map,
   merge,
   of,
+  startWith,
+  switchMap,
   tap,
+  type Observable,
 } from 'rxjs';
+import { ajax } from 'rxjs/ajax';
 import {
   bindAttribute,
   bindClass,
@@ -14,6 +19,13 @@ import {
 } from './bindings';
 import { bindRouteView } from './bind-route-view';
 import { jsx } from './jsx';
+import {
+  failure,
+  idle,
+  loading,
+  success,
+  type LoadingState,
+} from './loading-state';
 import {
   locationToUrl,
   parseRoute,
@@ -31,6 +43,7 @@ const routerSection = document.querySelector<HTMLElement>('#routerSection')!;
 const routeUrlElement = document.querySelector<HTMLElement>('#routeUrl')!;
 const routeTypeElement = document.querySelector<HTMLElement>('#routeType')!;
 const routeParamsElement = document.querySelector<HTMLElement>('#routeParams')!;
+const routeRequestElement = document.querySelector<HTMLElement>('#routeRequest')!;
 const routeViewElement = document.querySelector<HTMLElement>('#routeView')!;
 
 const routeHomeButton = document.querySelector<HTMLButtonElement>('#routeHome')!;
@@ -70,10 +83,30 @@ const formatRouteParams = (route: Route): string => {
   }
 };
 
+type User = {
+  readonly id: number;
+  readonly name: string;
+  readonly username: string;
+  readonly email: string;
+};
+
+const loadUser = (id: number): Observable<User> =>
+  ajax.getJSON<User>(`https://jsonplaceholder.typicode.com/users/${id}`);
+
+const formatUser = (user: User): string => JSON.stringify(user, null, 2);
+
+const formatError = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
+// Pure route -> request intent projection. It owns which routes need which
+// data; null means the current route needs no user request.
+const routeToUserId = (route: Route): number | null =>
+  route.type === 'user' ? route.id : null;
+
 // Typed route data selects the JSX view. JSX owns structure only; the view
 // lifetime ends when the next route mounts through bindRouteView.
 const createRouteView = (route: Route): View<HTMLElement> =>
-  createView(() => {
+  createView(lifetime => {
     switch (route.type) {
       case 'home':
         return (
@@ -83,13 +116,37 @@ const createRouteView = (route: Route): View<HTMLElement> =>
           </section>
         ) as HTMLElement;
 
-      case 'user':
+      case 'user': {
+        const statusElement = <code /> as HTMLElement;
+        const errorElement = <code /> as HTMLElement;
+        const resultElement = <pre class="http-result" /> as HTMLElement;
+
+        const resultText$ = userLoadingState$.pipe(
+          map(state => state.status === 'success' ? formatUser(state.value) : ''),
+          distinctUntilChanged(),
+        );
+
+        const errorText$ = userLoadingState$.pipe(
+          map(state => state.status === 'error' ? formatError(state.error) : 'none'),
+          distinctUntilChanged(),
+        );
+
+        lifetime.add(bindText(statusElement, userRequestStatus$));
+        lifetime.add(bindText(errorElement, errorText$));
+        lifetime.add(bindText(resultElement, resultText$));
+
         return (
           <section>
             <strong>User view</strong>
-            <p>Mounted for user id {route.id}.</p>
+            <p>
+              Mounted for user id {route.id}. The route selection started this
+              request; navigating away cancels it.
+            </p>
+            <p>status: {statusElement} · error: {errorElement}</p>
+            {resultElement}
           </section>
         ) as HTMLElement;
+      }
 
       case 'settings':
         return (
@@ -206,12 +263,44 @@ const routeNotFound$ = route$.pipe(
   distinctUntilChanged(),
 );
 
+// ROUTER + HTTP: route selection drives request intent and cancellation.
+// No new API is involved — Route$, a pure projection, switchMap, and
+// LoadingState compose into route-driven data loading.
+const userId$ = route$.pipe(
+  map(routeToUserId),
+  distinctUntilChanged(),
+);
+
+// switchMap makes navigation the cancellation policy: moving from user 1 to
+// user 2 abandons the in-flight request, and leaving the user route entirely
+// (null intent) cancels it and resets the state to idle.
+const userLoadingState$ = userId$.pipe(
+  switchMap(id =>
+    id === null
+      ? of(idle())
+      : loadUser(id).pipe(
+          map(success),
+          catchError((error: unknown) => of(failure(error))),
+          startWith(loading()),
+        ),
+  ),
+  shareLatest<LoadingState<User>>(),
+);
+
+const userRequestStatus$ = userLoadingState$.pipe(
+  map(state => state.status),
+  distinctUntilChanged(),
+);
+
 const bindings = [
   bindText(routeUrlElement, currentUrl$),
   bindText(routeTypeElement, routeType$),
   bindText(routeParamsElement, routeParams$),
   bindAttribute(routerSection, 'data-route', routeType$),
   bindClass(routerSection, 'not-found', routeNotFound$),
+  // Persistent subscriber: keeps the shared request lifecycle alive across
+  // route view swaps, so cancellation stays a visible switchMap policy.
+  bindText(routeRequestElement, userRequestStatus$),
   // route$ already applies distinctUntilChanged(sameRoute), so one view
   // mounts per navigation, not one per emission.
   bindRouteView(routeViewElement, route$, createRouteView),

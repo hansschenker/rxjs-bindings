@@ -77,6 +77,7 @@ The binding layer therefore contains only **DOM sink functions**. Each function 
 | `ActivatedRoute` | `Route$` projections |
 | route params | typed fields on `Route` |
 | current route | remembered `Route$` via `shareLatest()` |
+| route resolver / data loading | `Route$` → pure intent → `switchMap` → `LoadingState$` |
 | Angular animations | `animationFrames()` + pure functions + `bindStyle()` |
 | animation interruption | `switchMap()` |
 | animation queueing | `concatMap()` |
@@ -417,7 +418,7 @@ navigate({ type: 'user', id: 42 });
 
 > Route parsing is pure TypeScript, navigation mutation is an imperative History API effect, and temporal coordination is RxJS.
 
-Router V1 intentionally postpones internal-link interception, query-parameter typing, guards, redirects, lazy views, and Router + HTTP composition until the core navigation machine is established.
+Router V1 intentionally postpones internal-link interception, query-parameter typing, guards, redirects, and lazy views until the core navigation machine is established. Router + HTTP composition is covered below.
 
 
 ## RxJS Animation V1
@@ -730,6 +731,55 @@ emission.
 > A structural binding converts stream emissions into view lifetimes. It owns
 > mounting, teardown, and DOM placement — never what the values mean.
 
+## Router + HTTP V1
+
+Route selection drives request intent and cancellation. Deliberately, **no new
+API is involved** — route-driven data loading is a composition of primitives
+the project already has:
+
+```text
+Route$
+  │
+  │ map(routeToUserId)          pure route -> request-intent projection
+  ▼
+UserId$  (number | null)
+  │
+  │ switchMap
+  ├── null ──► of(idle())       leaving the route cancels and resets
+  └── id ────► loadUser(id)
+                 │ map(success) + catchError(...) + startWith(loading())
+                 ▼
+          LoadingState<User>$
+                 │
+            shareLatest()
+                 │
+        ┌────────┴────────┐
+        ▼                 ▼
+  app-level status   user route view
+   (persistent)      (bindRouteView)
+```
+
+Each piece keeps its established role:
+
+- The pure projection (`routeToUserId`) owns **which routes need which data**.
+  `null` means the current route needs no request.
+- `switchMap` makes **navigation the cancellation policy**: moving from user 1
+  to user 2 abandons the in-flight request, and leaving the user route
+  entirely switches to `of(idle())`, which both cancels the request and resets
+  the state explicitly.
+- `LoadingState` keeps the request lifecycle as data; the route view mounted
+  through `bindRouteView` simply binds to projections of the shared state, and
+  its bindings end when the route ends.
+- `shareLatest()` gives the persistent status display and the mounted route
+  view one shared request lifecycle. The persistent subscriber keeps the
+  pipeline alive across route view swaps, so cancellation remains the visible
+  `switchMap` policy rather than incidental refCount teardown.
+
+### Router + HTTP design rule
+
+> Route data loading is `Route$` → pure intent projection → `switchMap` →
+> `LoadingState$`. Navigation is the request cancellation policy.
+
 ## Use as a package
 
 The library builds as a side-effect-free ES module with `rxjs` as a peer
@@ -811,6 +861,7 @@ npm run build:demo   # dist-demo/  — demo site including the Todo sample
 - A view is a DOM node plus an RxJS `Subscription` lifetime.
 - Structural bindings convert stream emissions into view lifetimes; an unmounted view's subscriptions have ended.
 - A keyed list item receives its changes through its own remembered item stream and updates its DOM in place.
+- Route-driven data loading is a stream composition; navigation cancels a route's requests through `switchMap`.
 - No external web framework and no change-detection mechanism are required.
 
 ## Contributors
@@ -824,13 +875,13 @@ npm run build:demo   # dist-demo/  — demo site including the Todo sample
 
 Next architectural steps:
 
-1. Router + HTTP — route selection drives request intent and cancellation.
-2. Router V2 — internal-link interception, query parameters, redirects, and typed NotFound handling.
-3. HTTP V2 — retry, timeout, refresh, and optional previous-value retention while reloading.
-4. Form Control V2 — disabled/enabled state and status projection.
-5. Form Control V3 — asynchronous validation with an explicit cancellation policy.
-6. `FormGroup` / `FormArray` — aggregate control state and validation.
+1. Router V2 — internal-link interception, query parameters, redirects, and typed NotFound handling.
+2. HTTP V2 — retry, timeout, refresh, and optional previous-value retention while reloading.
+3. Form Control V2 — disabled/enabled state and status projection.
+4. Form Control V3 — asynchronous validation with an explicit cancellation policy.
+5. `FormGroup` / `FormArray` — aggregate control state and validation.
 
 Completed steps: `bindIf()`, `bindList()`, and Router → View mounting
-(`bindRouteView()`) are implemented as core structural bindings, and the
-project is packaged as an importable library (see “Use as a package”).
+(`bindRouteView()`) are implemented as core structural bindings; the project
+is packaged as an importable library (see “Use as a package”); and Router +
+HTTP composition is demonstrated in the router demo (see “Router + HTTP V1”).
