@@ -19,6 +19,7 @@
         gap: 0.5rem;
         align-items: center;
         margin-block: 1rem;
+        flex-wrap: wrap;
       }
       input, button {
         font: inherit;
@@ -26,6 +27,17 @@
       }
       .is-zero {
         opacity: 0.6;
+      }
+      .invalid {
+        outline: 2px solid currentColor;
+      }
+      .control-state {
+        display: grid;
+        grid-template-columns: max-content 1fr;
+        gap: 0.35rem 1rem;
+      }
+      code {
+        overflow-wrap: anywhere;
       }
     </style>
   </head>
@@ -45,6 +57,35 @@
       <button id="increment" type="button">+</button>
       <button id="reset" type="button">Reset</button>
     </div>
+
+    <hr />
+
+    <section aria-labelledby="formControlTitle">
+      <h2 id="formControlTitle">RxJS Form Control</h2>
+
+      <label class="row">
+        <span>Email</span>
+        <input id="emailInput" type="email" autocomplete="off" />
+      </label>
+
+      <div class="row">
+        <button id="emailSetExample" type="button">Set example value</button>
+        <button id="emailReset" type="button">Reset control</button>
+      </div>
+
+      <dl class="control-state">
+        <dt>value</dt>
+        <dd><code id="emailValue"></code></dd>
+        <dt>valid</dt>
+        <dd><code id="emailValid"></code></dd>
+        <dt>dirty</dt>
+        <dd><code id="emailDirty"></code></dd>
+        <dt>touched</dt>
+        <dd><code id="emailTouched"></code></dd>
+        <dt>errors</dt>
+        <dd><code id="emailErrors"></code></dd>
+      </dl>
+    </section>
 
     <script type="module" src="/src/main.ts"></script>
   </body>

@@ -19,6 +19,9 @@ Observable<Action>
 scan(reduceState, initialState)
    │
    ▼
+shareLatest()
+   │
+   ▼
 Observable<State>
    │
    ├──► bindText()
@@ -60,6 +63,8 @@ The binding layer therefore contains only **DOM sink functions**. Each function 
 | `[style.width]="width"` | `bindStyle(element, 'width', width$)` |
 | `(click)="..."` | `fromEvent(element, 'click')` |
 | `[(ngModel)]="value"` | `fromEvent(...)` + `bindProperty(...)` |
+| `FormControl` | `Observable<ControlState<T>>` |
+| `valueChanges` | projection of `ControlState<T>` |
 
 Two-way binding is therefore not a primitive. It is two one-way dataflows:
 
@@ -88,7 +93,7 @@ Actions are merged and reduced into state.
 const state$ = action$.pipe(
   scan(reduceState, initialState),
   startWith(initialState),
-  shareReplay({ bufferSize: 1, refCount: true }),
+  shareLatest(),
 );
 ```
 
@@ -108,6 +113,38 @@ bindText(countElement, count$);
 ```
 
 No change-detection loop is required. A DOM binding receives a value only when its stream emits.
+
+## `shareLatest()`
+
+`shareLatest()` is the canonical sharing policy for remembered state streams in this project.
+
+```ts
+export const shareLatest = <T>() =>
+  shareReplay<T>({
+    bufferSize: 1,
+    refCount: true,
+  });
+```
+
+It means:
+
+```text
+share one upstream execution
++
+remember/replay the latest emitted value
++
+disconnect upstream when nobody is subscribed
+```
+
+This lets state pipelines read in terms of their intent:
+
+```text
+scan()         → evolve state
+startWith()    → establish initial state
+shareLatest()  → share execution + remember latest state
+```
+
+Remembered application state therefore uses **`scan(...) + shareLatest()`**.
 
 ## API
 
@@ -149,10 +186,6 @@ const bindAttribute = (
 
 Sets one DOM attribute. `null` and `undefined` remove the attribute; every other value is stringified.
 
-```ts
-bindAttribute(element, 'aria-label', label$);
-```
-
 ### `bindClass`
 
 ```ts
@@ -165,10 +198,6 @@ const bindClass = (
 
 Toggles one class token. `true` adds the class and `false` removes it.
 
-```ts
-bindClass(element, 'active', active$);
-```
-
 ### `bindStyle`
 
 ```ts
@@ -179,19 +208,9 @@ const bindStyle = (
 ): Subscription
 ```
 
-Sets one inline CSS property. `null` and `undefined` remove it. The binding does not invent units: the upstream stream decides whether the value is `"12px"`, `"50%"`, `0.5`, and so on.
-
-```ts
-const width$ = count$.pipe(
-  map(count => `${count * 10}%`),
-);
-
-bindStyle(element, 'width', width$);
-```
+Sets one inline CSS property. `null` and `undefined` remove it. The binding does not invent units; the upstream stream decides the CSS value.
 
 ## Primitive DOM sink family
-
-The current binding primitives are:
 
 ```text
 Observable<Value>
@@ -204,6 +223,104 @@ Observable<Value>
 ```
 
 These functions do not transform application data. They only connect already-computed values to imperative DOM effects.
+
+## RxJS Form Control V1
+
+The project does **not** recreate Angular's mutable `FormControl` class. A Form Control is modeled as a remembered stream of control state:
+
+```text
+DOM input ──────────────┐
+DOM blur ───────────────┤
+setValue command ───────┤
+reset command ──────────┤
+                       ▼
+                Observable<ControlAction<T>>
+                       │
+                       │ scan(reduceControlState)
+                       ▼
+                   shareLatest()
+                       │
+                       ▼
+             Observable<ControlState<T>>
+                       │
+          ┌────────────┼────────────┐
+          ▼            ▼            ▼
+        value$       valid$      touched$
+        dirty$       errors$       ...
+```
+
+### Control state
+
+Only genuine state is stored:
+
+```ts
+type ControlState<T> = {
+  readonly value: T;
+  readonly dirty: boolean;
+  readonly touched: boolean;
+  readonly errors: ValidationErrors | null;
+};
+```
+
+Derived properties are projections rather than duplicated state:
+
+```text
+valid      = errors === null
+invalid    = errors !== null
+pristine   = !dirty
+untouched  = !touched
+```
+
+### Control actions
+
+```ts
+type ControlAction<T> =
+  | { readonly type: 'userValueChanged'; readonly value: T }
+  | { readonly type: 'setValue'; readonly value: T }
+  | { readonly type: 'blurred' }
+  | { readonly type: 'reset' };
+```
+
+`userValueChanged` and `setValue` deliberately have different policies:
+
+```text
+userValueChanged(value)
+  value  = value
+  dirty  = true
+
+setValue(value)
+  value  = value
+  dirty  = unchanged
+```
+
+A blur marks the control touched. Reset restores the initial value and clears `dirty` and `touched`.
+
+### Validation
+
+Validators are ordinary pure TypeScript functions:
+
+```ts
+type Validator<T> =
+  (value: T) => ValidationErrors | null;
+```
+
+RxJS does not own validation rules. It only moves values through the control state machine; validators decide whether a value is valid.
+
+### Angular FormControl correspondence
+
+| Angular FormControl | RxJS Form Control |
+| --- | --- |
+| `control.value` | latest emission of `value$` |
+| `control.valueChanges` | `value$` |
+| `control.valid` | `valid$` projection |
+| `control.invalid` | `invalid$` projection |
+| `control.errors` | `errors$` projection |
+| `control.dirty` | `dirty$` projection |
+| `control.pristine` | `!dirty` projection |
+| `control.touched` | `touched$` projection |
+| `control.untouched` | `!touched` projection |
+
+The demo includes synchronous `required` and `minLength` validators, user edits, blur/touched tracking, programmatic `setValue`, reset, and DOM rendering through the existing binding primitives.
 
 ## Run the example
 
@@ -230,11 +347,13 @@ npm run build
 - DOM events are sources; text, properties, attributes, classes, and styles are sinks.
 - Do not hide standard RxJS operators or sources behind domain-flavored aliases.
 - Business logic lives in plain functions passed to RxJS operators.
-- State is a stream that remembers: `scan(...)` + `shareReplay(1)`.
-- Sharing is explicit.
+- Remembered application state uses `scan(...) + shareLatest()`.
+- Sharing, replay, and teardown policy are explicit inside `shareLatest()`.
 - Subscription ownership and teardown are explicit.
 - Two-way binding is modeled as two one-way dataflows.
 - DOM sinks apply values; upstream streams decide what those values mean.
+- Form Control state is data, not a mutable framework object.
+- Validation rules are pure TypeScript functions.
 - No framework and no change-detection mechanism are required.
 
 ## Contributors
@@ -249,4 +368,6 @@ npm run build
 Next architectural steps:
 
 1. `bindIf()` — reactive DOM lifetime / conditional mounting.
-2. Reactive form controls — values, validation, dirty/touched state, and effects as streams.
+2. Form Control V2 — disabled/enabled state and status projection.
+3. Form Control V3 — asynchronous validation with an explicit cancellation policy.
+4. `FormGroup` / `FormArray` — aggregate control state and validation.
