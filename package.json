@@ -1,0 +1,39 @@
+{
+  "name": "rxjs-bindings",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Lifecycle-aware reactive bindings for TypeScript and RxJS",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hansschenker/rxjs-bindings.git"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./dom": {
+      "types": "./dist/dom.d.ts",
+      "import": "./dist/dom.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "CONTRIBUTORS.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test tests/bindings.test.mjs",
+    "example:node": "tsc -p tsconfig.examples.json && node dist-examples/examples/node.js",
+    "check:examples": "tsc -p tsconfig.examples.json --noEmit"
+  },
+  "peerDependencies": {
+    "rxjs": "^7.8.0"
+  },
+  "devDependencies": {
+    "rxjs": "^7.8.2",
+    "typescript": "^5.8.3"
+  }
+}

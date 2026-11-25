@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>RxJS bindings demo</title>
+    <style>
+      body { font: 1rem system-ui, sans-serif; max-width: 42rem; margin: 3rem auto; padding: 1rem; }
+      rx-bindings-demo { display: grid; gap: .8rem; padding: 1rem; border: 1px solid #888; }
+      .active { font-weight: bold; }
+      button { width: fit-content; padding: .4rem .8rem; }
+    </style>
+  </head>
+  <body>
+    <h1>RxJS bindings demo</h1>
+    <p>Click Increase. Remove the component to dispose of all bindings.</p>
+    <rx-bindings-demo></rx-bindings-demo>
+    <button id="toggle">Remove / restore demo</button>
+    <script type="module" src="./browser.ts"></script>
+    <script type="module">
+      const demo = document.querySelector('rx-bindings-demo');
+      const toggle = document.querySelector('#toggle');
+      toggle.addEventListener('click', () => {
+        if (demo.isConnected) demo.remove();
+        else toggle.before(demo);
+      });
+    </script>
+  </body>
+</html>
